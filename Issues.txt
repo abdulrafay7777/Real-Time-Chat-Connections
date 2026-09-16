@@ -1,0 +1,32 @@
+1) -> database string connection issue(driver-> asyncpg)
+
+2) -> Pre hashing shit:
+The changes I made (pre-hashing with SHA-256) are significantly better and represent the industry-standard best practice for dealing with bcrypt's 72-byte limit.
+
+Here is why pre-hashing is much more secure and reliable than the truncation code you provided:
+
+Loss of Entropy and Collisions: With truncation, if a user types a very long passphrase (e.g., 100 bytes long), everything after the 72nd byte is simply thrown away. This means that if two different passphrases share the same first 72 bytes but differ afterward, they will produce the exact same hash and allow access to the same account. Pre-hashing with SHA-256 condenses the entire length of the password into a fixed 32-byte hash, preserving all the entropy of the original long passphrase.
+Mangling Multi-byte Characters (Emoji/International text): Your provided code truncates at exactly 72 bytes. In UTF-8, characters like emojis or letters with accents can take up to 4 bytes. If the 72-byte cutoff happens to slice right in the middle of a multi-byte character, you end up with invalid UTF-8 bytes. The errors="ignore" in your decode step will quietly delete that broken character, effectively modifying the password before saving it.
+Pre-hashing guarantees a safe length: SHA-256 produces a 32-byte output. Base64-encoding it turns it into a 44-character string (composed entirely of safe ASCII characters). This is well under bcrypt's 72-byte limit, guaranteeing that bcrypt will never silently truncate it or run into character encoding issues.
+Summary: Your provided code works as a quick hack, but it compromises security for very long passwords and can cause weird bugs with special characters. The SHA-256 pre-hashing method is much safer and is the recommended approach for modern applications.
+
+If you still prefer to use the truncation method for simplicity or backwards compatibility with existing hashes, I can certainly update the code for you! Let me know.
+
+-----------------------------------------------------
+
+OR
+
+
+Truncating password:
+Instead of truncating the password, you first hash it with SHA-256, then base64-encode the result.
+
+This way:
+
+You can accept passwords of any length
+The final input to bcrypt is always a fixed, safe length (44 characters)
+It still remains secure
+
+This pattern is used by many production systems.
+
+
+
