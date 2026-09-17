@@ -1,5 +1,3 @@
-# app/routers/rooms.py
-
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -80,3 +78,23 @@ async def get_room(room_id: str, db: AsyncSession = Depends(get_db)):
     if not room:
         raise HTTPException(status_code=404, detail="Room not found")
     return room
+
+
+@router.delete("/{room_id}", status_code=204)
+async def delete_room(
+    room_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    result = await db.execute(select(Room).where(Room.id == room_id))
+    room = result.scalar_one_or_none()
+    
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+        
+    if room.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to delete this room")
+        
+    await db.delete(room)
+    await db.commit()
+    return None

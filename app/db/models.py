@@ -43,8 +43,8 @@ class Room(Base):
     )
 
     # relationships
-    messages: Mapped[list["Message"]] = relationship(back_populates="room")
-    members: Mapped[list["RoomMember"]] = relationship(back_populates="room")
+    messages: Mapped[list["Message"]] = relationship(back_populates="room", cascade="all, delete-orphan")
+    members: Mapped[list["RoomMember"]] = relationship(back_populates="room", cascade="all, delete-orphan")
 
 
 class RoomMember(Base):
