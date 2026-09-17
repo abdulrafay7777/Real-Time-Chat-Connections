@@ -1,6 +1,6 @@
 # app/routers/auth.py
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -8,12 +8,26 @@ from app.db.base import get_db
 from app.db.models import User
 from app.core.security import hash_password, verify_password, create_access_token
 from app.schemas.auth import RegisterRequest, LoginRequest, TokenResponse, UserResponse
+from app.services.rate_limiter import auth_limiter
 
 router = APIRouter()
 
 
 @router.post("/register", response_model=UserResponse, status_code=201)
-async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db)):
+async def register(
+    request: Request,
+    payload: RegisterRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    # rate limit by IP
+    client_ip = request.client.host
+    if not auth_limiter.is_allowed(client_ip):
+        retry = auth_limiter.retry_after(client_ip)
+        raise HTTPException(
+            status_code=429,
+            detail=f"Too many attempts. Try again in {retry}s",
+            headers={"Retry-After": str(retry)}
+        )
 
     # check username taken
     result = await db.execute(select(User).where(User.username == payload.username))
@@ -36,7 +50,20 @@ async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db))
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
+async def login(
+    request: Request,
+    payload: LoginRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    # rate limit by IP
+    client_ip = request.client.host
+    if not auth_limiter.is_allowed(client_ip):
+        retry = auth_limiter.retry_after(client_ip)
+        raise HTTPException(
+            status_code=429,
+            detail=f"Too many attempts. Try again in {retry}s",
+            headers={"Retry-After": str(retry)}
+        )
 
     result = await db.execute(select(User).where(User.email == payload.email))
     user = result.scalar_one_or_none()

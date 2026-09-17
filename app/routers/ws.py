@@ -11,6 +11,7 @@ from app.db.base import get_db, AsyncSessionLocal
 from app.db.models import Room, RoomMember, Message
 from app.core.security import decode_token
 from app.services.connection_manager import manager
+from app.services.rate_limiter import message_limiter
 
 router = APIRouter()
 
@@ -89,7 +90,17 @@ async def websocket_endpoint(
         while True:
             data = await websocket.receive_text()
 
-            # rate limit: max 200 chars per message
+            # ── Rate limit check ─────────────────────────────
+            if not message_limiter.is_allowed(user_id):
+                retry = message_limiter.retry_after(user_id)
+                await websocket.send_text(json.dumps({
+                    "type":  "error",
+                    "text":  f"Slow down — you can send more messages in {retry}s",
+                    "code":  "rate_limited"
+                }))
+                continue   # don't disconnect, just reject this message
+
+            # ── Message length check ─────────────────────────
             if len(data) > 200:
                 await websocket.send_text(json.dumps({
                     "type": "error",
@@ -102,16 +113,16 @@ async def websocket_endpoint(
 
             # build outgoing payload
             outgoing = {
-                "type": "message",
-                "id": msg.id,
-                "user_id": user_id,
-                "username": username,
-                "text": data,
-                "room_id": room_id,
+                "type":      "message",
+                "id":        msg.id,
+                "user_id":   user_id,
+                "username":  username,
+                "text":      data,
+                "room_id":   room_id,
                 "timestamp": datetime.now(timezone.utc).isoformat()
             }
 
-            # send back to sender (confirmation)
+            # send confirmation back to sender
             await websocket.send_text(json.dumps(outgoing))
 
             # broadcast to everyone else

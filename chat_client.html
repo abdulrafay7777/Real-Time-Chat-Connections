@@ -409,7 +409,12 @@
           <span class="hash">#</span>
           <span id="chat-room-name">general</span>
         </div>
-        <div class="online-count" id="online-count"></div>
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <div class="online-count" id="online-count"></div>
+          <button id="delete-room-btn" class="logout-btn" style="display: none; padding: 2px;" onclick="deleteRoom()" title="Delete room">
+             <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+          </button>
+        </div>
       </div>
 
       <div class="messages-area" id="messages-area">
@@ -461,6 +466,7 @@
   // ── State ──────────────────────────────────────────────────
   let token      = sessionStorage.getItem("chat_token") || null;
   let username   = sessionStorage.getItem("chat_username") || null;
+  let userId     = sessionStorage.getItem("chat_userid") || null;
   let currentRoom = null;
   let ws          = null;
   let rooms       = [];
@@ -534,8 +540,10 @@
       const payload = JSON.parse(atob(data.access_token.split(".")[1]));
       token    = data.access_token;
       username = payload.username;
+      userId   = payload.sub;
 
       sessionStorage.setItem("chat_token", token);
+      sessionStorage.setItem("chat_userid", userId);
       sessionStorage.setItem("chat_username", username);
       showApp();
     } catch { showAuthError("Could not reach the server."); }
@@ -545,9 +553,10 @@
   // ── Logout ─────────────────────────────────────────────────
   function doLogout() {
     if (ws) ws.close();
-    token = null; username = null; currentRoom = null;
+    token = null; username = null; userId = null; currentRoom = null;
     sessionStorage.removeItem("chat_token");
     sessionStorage.removeItem("chat_username");
+    sessionStorage.removeItem("chat_userid");
     document.getElementById("app").style.display = "none";
     document.getElementById("auth-screen").style.display = "flex";
     document.getElementById("login-email").value = "";
@@ -606,6 +615,10 @@
 
     document.getElementById("chat-room-name").textContent = room.name;
     document.getElementById("msg-input").placeholder = `Message #${room.name}`;
+    
+    const delBtn = document.getElementById("delete-room-btn");
+    if (delBtn) delBtn.style.display = room.owner_id === userId ? "block" : "none";
+
     clearMessages();
     setStatus("connecting");
 
@@ -783,6 +796,31 @@
       await loadRooms();
       selectRoom(data);
     } catch { showToast("Could not reach the server", "error"); }
+  }
+
+  async function deleteRoom() {
+    if (!currentRoom || !confirm(`Are you sure you want to delete #${currentRoom.name}?`)) return;
+
+    try {
+      const res = await fetch(`${API}/rooms/${currentRoom.id}`, {
+        method: "DELETE",
+        headers: authHeader()
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        showToast(data.detail || "Failed to delete room", "error");
+        return;
+      }
+      
+      showToast(`#${currentRoom.name} deleted`, "success");
+      document.getElementById("active-chat").style.display = "none";
+      document.getElementById("no-room").style.display = "flex";
+      currentRoom = null;
+      if (ws) { ws.close(); ws = null; }
+      await loadRooms();
+    } catch {
+      showToast("Could not reach the server", "error");
+    }
   }
 
   // ── Status indicator ───────────────────────────────────────
